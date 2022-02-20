@@ -16,20 +16,36 @@ package com.googlesource.gerrit.plugins.examples.restapipostrevision;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Strings;
+import com.google.gerrit.entities.Change;
+import com.google.gerrit.entities.PatchSet;
+import com.google.gerrit.entities.Project;
 import com.google.gerrit.extensions.restapi.Response;
 import com.google.gerrit.extensions.restapi.RestModifyView;
 import com.google.gerrit.extensions.webui.UiAction;
 import com.google.gerrit.server.CurrentUser;
 import com.google.gerrit.server.IdentifiedUser;
 import com.google.gerrit.server.change.RevisionResource;
+import com.google.gerrit.server.notedb.ChangeNotes;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
+
+import com.google.gerrit.server.update.BatchUpdate;
+import com.google.gerrit.server.project.ProjectState;
+import com.google.gerrit.entities.Project;
+import com.google.inject.assistedinject.Assisted;
+import com.google.gerrit.server.update.ChangeContext;
+import com.google.gerrit.server.util.time.TimeUtil;
+import com.google.gerrit.server.notedb.ChangeNotes;
 
 class HelloRevisionAction
     implements UiAction<RevisionResource>,
         RestModifyView<RevisionResource, HelloRevisionAction.Input> {
 
-  private Provider<CurrentUser> user;
+  private final BatchUpdate.Factory batchUpdateFactory;
+  private final ProjectState projectState;
+  private final Project project;
+  private final Provider<CurrentUser> userProvider;
+  private ChangeNotes.Factory notesFactory;
 
   static class Input {
     boolean french;
@@ -37,13 +53,35 @@ class HelloRevisionAction
   }
 
   @Inject
-  HelloRevisionAction(Provider<CurrentUser> user) {
-    this.user = user;
+  HelloRevisionAction(Provider<CurrentUser> user,
+                      BatchUpdate.Factory batchUpdateFactory,
+                      @Assisted ProjectState projectState
+  ) {
+    this.userProvider = user;
+
+    this.batchUpdateFactory = batchUpdateFactory;
+    this.projectState = projectState;
+    project = projectState.getProject();
   }
 
   @Override
   public Response<String> apply(RevisionResource rev, Input input) {
     final String greeting = input.french ? "Bonjour" : "Hello";
+
+
+    PatchSet.Id psId = ChangeNotes.ChangeNotes().getChange().currentPatchSetId();
+    ChangeNotes notes = notesFactory.create(project.getNameKey(), psId.changeId());
+    Change change = notes.getChange();
+    try (BatchUpdate bu = batchUpdateFactory.create(
+            project.getNameKey(), userProvider.get(), TimeUtil.nowTs())) {
+      bu.addOp(change.getId(), new BatchUpdate.Op() {
+        @Override
+        public boolean updateChange(ChangeContext ctx) {
+          return true;
+        }
+      });
+      bu.execute();
+    }
     return Response.ok(
         String.format(
             "%s %s from change %s, patch set %d!",
@@ -62,4 +100,5 @@ class HelloRevisionAction
         .setTitle("Say hello in different languages")
         .setVisible(user.get() instanceof IdentifiedUser);
   }
+
 }
