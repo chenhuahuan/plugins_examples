@@ -19,6 +19,7 @@ import com.google.common.base.Strings;
 import com.google.gerrit.entities.Change;
 import com.google.gerrit.entities.PatchSet;
 import com.google.gerrit.entities.Project;
+import com.google.gerrit.exceptions.StorageException;
 import com.google.gerrit.extensions.restapi.Response;
 import com.google.gerrit.extensions.restapi.RestModifyView;
 import com.google.gerrit.extensions.webui.UiAction;
@@ -36,9 +37,11 @@ import com.google.inject.assistedinject.Assisted;
 import com.google.gerrit.server.update.ChangeContext;
 import com.google.gerrit.server.util.time.TimeUtil;
 import com.google.gerrit.server.notedb.ChangeNotes;
+import com.google.gerrit.server.change.ChangeResource;
+import com.google.gerrit.server.update.BatchUpdateOp;
 
 class HelloRevisionAction
-    implements UiAction<RevisionResource>,
+        implements UiAction<RevisionResource>,
         RestModifyView<RevisionResource, HelloRevisionAction.Input> {
 
   private final BatchUpdate.Factory batchUpdateFactory;
@@ -68,37 +71,38 @@ class HelloRevisionAction
   public Response<String> apply(RevisionResource rev, Input input) {
     final String greeting = input.french ? "Bonjour" : "Hello";
 
+    ChangeResource r = rev.getChangeResource();
+    Change change = r.getChange();
 
-    PatchSet.Id psId = ChangeNotes.ChangeNotes().getChange().currentPatchSetId();
-    ChangeNotes notes = notesFactory.create(project.getNameKey(), psId.changeId());
-    Change change = notes.getChange();
     try (BatchUpdate bu = batchUpdateFactory.create(
             project.getNameKey(), userProvider.get(), TimeUtil.nowTs())) {
-      bu.addOp(change.getId(), new BatchUpdate.Op() {
+      bu.addOp(change.getId(), new BatchUpdateOp() {
         @Override
         public boolean updateChange(ChangeContext ctx) {
           return true;
         }
       });
       bu.execute();
+    } catch (Exception e) {
+      return  Response.none();
     }
     return Response.ok(
-        String.format(
-            "%s %s from change %s, patch set %d!",
-            greeting,
-            Strings.isNullOrEmpty(input.message)
-                ? MoreObjects.firstNonNull(user.get().getUserName(), "world")
-                : input.message,
-            rev.getChange().getId().toString(),
-            rev.getPatchSet().number()));
+            String.format(
+                    "%s %s from change %s, patch set %d!",
+                    greeting,
+                    Strings.isNullOrEmpty(input.message)
+                            ? MoreObjects.firstNonNull(userProvider.get().getUserName(), "world")
+                            : input.message,
+                    rev.getChange().getId().toString(),
+                    rev.getPatchSet().number()));
   }
 
   @Override
   public Description getDescription(RevisionResource resource) {
     return new Description()
-        .setLabel("Say hello")
-        .setTitle("Say hello in different languages")
-        .setVisible(user.get() instanceof IdentifiedUser);
+            .setLabel("Say hello")
+            .setTitle("Say hello in different languages")
+            .setVisible(userProvider.get() instanceof IdentifiedUser);
   }
 
 }
