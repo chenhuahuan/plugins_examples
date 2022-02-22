@@ -31,24 +31,22 @@ import com.google.inject.Inject;
 import com.google.inject.Provider;
 
 import com.google.gerrit.server.update.BatchUpdate;
-import com.google.gerrit.server.project.ProjectState;
-import com.google.gerrit.entities.Project;
 import com.google.inject.assistedinject.Assisted;
 import com.google.gerrit.server.update.ChangeContext;
 import com.google.gerrit.server.util.time.TimeUtil;
-import com.google.gerrit.server.notedb.ChangeNotes;
 import com.google.gerrit.server.change.ChangeResource;
 import com.google.gerrit.server.update.BatchUpdateOp;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class HelloRevisionAction
         implements UiAction<RevisionResource>,
         RestModifyView<RevisionResource, HelloRevisionAction.Input> {
 
+  private static final Logger log = LoggerFactory.getLogger(HelloRevisionAction.class);
   private final BatchUpdate.Factory batchUpdateFactory;
-  private final ProjectState projectState;
-  private final Project project;
   private final Provider<CurrentUser> userProvider;
-  private ChangeNotes.Factory notesFactory;
 
   static class Input {
     boolean french;
@@ -57,14 +55,11 @@ class HelloRevisionAction
 
   @Inject
   HelloRevisionAction(Provider<CurrentUser> user,
-                      BatchUpdate.Factory batchUpdateFactory,
-                      @Assisted ProjectState projectState
+                      BatchUpdate.Factory batchUpdateFactory
   ) {
     this.userProvider = user;
-
     this.batchUpdateFactory = batchUpdateFactory;
-    this.projectState = projectState;
-    project = projectState.getProject();
+    log.info("entering HelloRevisionAction() ");
   }
 
   @Override
@@ -73,9 +68,10 @@ class HelloRevisionAction
 
     ChangeResource r = rev.getChangeResource();
     Change change = r.getChange();
+    log.info("entering apply() ");
 
     try (BatchUpdate bu = batchUpdateFactory.create(
-            project.getNameKey(), userProvider.get(), TimeUtil.nowTs())) {
+            change.getProject(), userProvider.get(), TimeUtil.nowTs())) {
       bu.addOp(change.getId(), new BatchUpdateOp() {
         @Override
         public boolean updateChange(ChangeContext ctx) {
@@ -83,7 +79,9 @@ class HelloRevisionAction
         }
       });
       bu.execute();
+      log.info("executing BatchUpdate.execute().. ");
     } catch (Exception e) {
+      log.info("executing BatchUpdate.execute() exception: " + Response.none().toString());
       return  Response.none();
     }
     return Response.ok(
@@ -100,8 +98,8 @@ class HelloRevisionAction
   @Override
   public Description getDescription(RevisionResource resource) {
     return new Description()
-            .setLabel("Say hello")
-            .setTitle("Say hello in different languages")
+            .setLabel("Say hello---")
+            .setTitle("Say hello in uuu different languages")
             .setVisible(userProvider.get() instanceof IdentifiedUser);
   }
 
